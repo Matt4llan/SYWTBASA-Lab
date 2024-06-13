@@ -2,19 +2,31 @@
 
 ## Objective
 
-To create a payload and detect it, create rule to alert and also detect this, Block the attack then automate it.
+The purpose of the SOC analyst lab is to provide hands-on experience in setting up, configuring, and using security operations center (SOC) tools such as LimaCharlie EDR and Sliver C2 to monitor, detect, and respond to security threats. The lab aims to equip participants with practical skills in deploying endpoint detection and response (EDR) solutions, generating command and control (C2) implants, and analyzing security telemetry to enhance their threat detection and incident response capabilities.
 
 ### Skills Learned
 
-- Setting up LimaCharlie
-- Creating Detection & Response Rules
-- Creating Yara Rules
-- Automation
+  - Setting up LimaCharlie EDR on a Windows virtual machine
+  - Configuring log shipping and ingestion for Sysmon event logs
+  - Enabling and using Sigma rules for threat detection
+  - Generating and deploying Sliver C2 implants
+  - Establishing and interacting with C2 sessions
+  - Analyzing process trees and network connections for suspicious activities
+  - Performing basic forensic analysis on endpoint activities
+  - Identifying and interpreting security telemetry data from EDR tools
+  - Utilizing command-line interfaces for security tool configuration and management
 
 ### Tools Used
 
-- LimaCharlie
-- Sliver
+  - __LimaCharlie EDR:__ For endpoint detection and response, log shipping, and threat detection
+  - __Sysmon:__ For generating detailed event logs
+  - __Sigma:__ For rule-based threat detection
+  - __Sliver C2:__ For generating and managing command and control implants
+  - __Windows Virtual Machine:__ As the target environment for EDR and C2 deployment
+  - __Command Prompt (Windows):__ For executing installation and interaction commands
+  - __VirusTotal:__ For inspecting and analyzing suspicious executables
+  - __EchoTrail:__ For familiarizing with common processes and identifying anomalies
+  - __LOLBINs (Living Off the Land Binaries):__ For understanding legitimate binaries used for malicious purposes
 
 ## Step 1 - Install LimaCharlie
 
