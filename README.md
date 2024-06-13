@@ -245,20 +245,296 @@ Lets explore what we have in this window, we can hover over the icons to see wha
 
 ![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/79d649be-5271-48c0-a474-fe0b520a7820) - Listening on network
 
+A note from Eric
+>I can’t stress enough how important it is for an analyst to have
+familiarity with the most common processes you’ll encounter on even a
+healthy system. As we say at SANS, “you must know normal before you can
+find evil.” For some helpful resources in “knowing normal”, check out
+the “[Hunt Evil](https://www.sans.org/posters/hunt-evil/)” poster from SANS and sign up for a free account at [EchoTrail](https://www.echotrail.io/).
+A process carrying a valid signature (Signed) is often (almost always)
+going to be benign itself. However, even legitimate signed processes can be used to launch malicious processes/code (read up on [LOLBINs](https://lolbas-project.github.io/#)).
+One of the easiest ways to spot unusual processes is to simply look for ones that are NOT signed. The circular green check mark indicates the process binary is signed/trusted.
+
+As we can see our C2 Implant is not signed and is also active on the network
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/a23526ff-012e-46cb-a13d-e3ad97ff46f0)
+
+By clicking on the 3 dots on the left of the process we can bring up a menu item to easily see the detination IP this process is communicating with
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/6a63c6ab-bbe8-4279-8bc6-d729933f1237)
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/2efd11b6-5c21-455e-8748-77997ef628fa)
+
+Next lets select 'Network' from the menu on the left and take a look at what we can see. We can search using ctrl+F and see if we can see our C2 Implant 'ELECTRIC_INEVITABLE.exe'
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/ab8117e7-12de-4c59-9cb5-e04972c31fd3)
+
+Next lets select 'File System' from the menu on the left and browse to where we know the Implant came from (C:\Users\sywtbsa\Downloads)
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/811dd2b4-349b-4aa6-bc39-a7dbe459eda9)
+
+Hovering over our payload a new menu with pop up, were going to select the '#' to inspect the hash of the suspicious executable by searching for it on VirusTotal
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/a93fe536-6c7b-4a53-a1b3-39e104a4c6e7)
+
+>__Pro Tip__: If the file is a common/well-known malware sample, you will know it right away.  However, “Item not found” on VT does not mean that this file is innocent, just that it’s never been seen before by VirusTotal. This makes sense because we just generated this payload ourselves, so of course it’s not likely to be seen by VirusTotal before. This is an important lesson for any analyst to learn — if you already suspect a file to be possible malware, but VirusTotal has never seen it before, trust your gut. This actually makes a file even more suspicious because nearly everything has been seen by VirusTotal, so your sample may have been custom-crafted/targeted which ups the ante a bit. In a mature SOC, this would likely affect the TLP of the IOC and/or case itself.
+
+Next click on 'Timeline' from the menu on the left, This is a near real-time view of EDR telemetry + event logs streaming from this system.
+
+Here we can see WEL - Windows event logs and others.
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/148556e3-b43d-4f3c-880e-c0f2a39328c7)
+
+Here we can filter this timeline with knows IOC's (indicators of compromise) such as the name of your implant or the known C2 IP address. If we filter and search back we should be able to see the moment our implant was created on the system.
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/9eb89213-89ef-4318-9a6e-54a111115462)
+
+
+---
+
+
+## Step 3 - Let’s Get Adversarial
+
+We're going to jump back into our Sliver C2 session launched in step 2 and do some shady stuff that we would want to be able to detect.
+
+Let’s elevate our implant to a SYSTEM level process with the following commands
+
+```
+getsystem
+```
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/88a39688-4877-4058-ad00-38498a46251f)
+
+This will spawn a new C2 session on the VM running as 'System' Lets switch to this new session
+
+```
+use 0f245292
+```
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/d69d9c11-1bf2-48ef-a93c-ee723f5fc277)
+
+Lets verify we have System privileges
+
+```
+whoami
+```
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/a3db4f6b-8227-4afc-91c8-aacfef47dfe6)
+
+Next, let’s do something adversaries love to do: steal credentials on a system. We’re going to dump the lsass.exe process from memory, a critical Windows process which holds sensitive information, such as credentials.. Read more about this technique here (https://www.microsoft.com/en-us/security/blog/2022/10/05/detecting-and-preventing-lsass-credential-dumping-attacks/). We are going to use an “LOLBIN” (https://socprime.com/blog/what-are-lolbins/) (legitimate binary already on the system) to accomplish this. 
+
+First, we need to identify the process ID of lsass.exe . Run the following command in your active C2 session
+
+```
+ps -e lsass.exe
+```
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/3fc8c1b5-9f5e-4e5f-9b72-05aaea25b0a6)
+
+Now, carrying forward the PID from the previous step, run the following command in the C2 session
+
+```
+execute rundll32.exe C:\\windows\\System32\\comsvcs.dll, MiniDump 756 C:\\Windows\\Temp\\lsass.dmp full
+```
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/ae561858-5c55-4ee7-b732-a5294a263a7f)
+
+This will dump the remote process from memory, and save it to 'C:\Windows\Temp\lsass.dmp'
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/022e548a-eb85-4bbf-b349-284e8900c439)
+
+>We are not going to further process the lsass dump to extract credentials, but I’ll leave it as an exercise for the reader if you want to try your hand at it. https://xapax.github.io/security/#attacking_active_directory_domain/active_directory_privilege_escalation/credential_extraction/#mimikatzpypykatz
+
+#### Now Lets Detect It
+
+Now that we’ve done something adversarial, let’s switch over to LimaCharlie to find the relevant telemetry. Since lsass.exe is a known sensitive process often targeted by credential dumping tools, any good EDR will generate events for this.
+
+Were going to head back to LimaCharlie and look at Timeline which is where we left it, lets refresh it and see what we have. Filter by 'SENSITIVE_PROCESS_ACCESS' and There could be many of these, but we know we’re looking for rundll32.exe being involved in the activity, so add that to your search filter and click on any of the returned events.
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/5d2be68b-8b96-465a-a1a7-7f89f423ba6f)
+
+Now that we know what the event looks like when credential access occurred, we have what we need to craft a detection & response (D&R) rule that would alert anytime this activity occurs.
+>link - https://doc.limacharlie.io/docs/documentation/ZG9jOjE5MzExMDE-detection-and-response-rules
+
+Clicking on the Build a D&R rule icon 
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/89f25abe-2061-416b-84ae-8ae4c49e53c3)
+
+We have 3 sections 'Detect', 'Respond' & 'Comment'
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/dc19ea17-5f9c-4d9f-b078-c48b687564a8)
+
+In the 'Detect' replace content with the below
+
+```
+event: SENSITIVE_PROCESS_ACCESS
+op: and
+rules:
+  - op: ends with
+    path: event/*/TARGET/FILE_PATH
+    value: lsass.exe
+  - not: true
+    op: ends with
+    path: event/*/SOURCE/FILE_PATH
+    value: wmiprvse.exe
+```
+
+We’re specifying that this detection should only look at SENSITIVE_PROCESS_ACCESS events where the victim, or target process ends with lsass.exe - excluding a very noisy false positive in this VM, wmiprvse.exe
+
+>For posterity let me state, this rule would be very noisy and need further tuning in a production environment, but for the purpose of this learning exercise, simple is better.
+
+In the “Respond” section of the new rule, remove all contents and replace them with this
+
+```
+- action: report
+  name: LSASS access
+```
+
+We’re telling LimaCharlie to simply generate a detection “report” anytime this detection occurs. For more advanced response capabilities, check out the docs (https://doc.limacharlie.io/docs/documentation/22ae79c4ab430-examples-detection-and-response-rules). We could ultimately tell this rule to do all sorts of things, like terminate the offending process chain, etc. Let’s keep it simple for now.
+
+Now let’s test our rule against the event we built it for. Lucky for us, LimaCharlie carried over that event it provides a quick and easy way to test the D&R logic. 
+
+Select 'Target Event' you can see this if you scroll down, Here you will see the raw event we observed in the timeline earlier. Scroll to the bottom of the raw event and click “Test Event” to see if our detection would work against this event.
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/2ec3a7d3-3493-401d-bc6c-6ce9adc492b1)
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/dba33980-7f1d-4c19-99bb-2bffd01d7d5d)
+
+We should now see the test outcome, notice that we have a “Match” and the D&R engine tells you exactly what it matched on.
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/e9b6de41-4533-466d-9369-b8af81095385)
+
+Now we can scroll back to the top and save this rule, we can call it 'LSASS Accessed'
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/73205c42-8d4b-4c2d-b6f6-ea9a72876fb2)
+
+
+#### Let’s Be Bad Again, Now with Detections!
+
+Were going to head back to Sliver and delete the previously dumped lsass process with the following Sliver C2 session command
+
+```
+execute cmd.exe /c del C:\\Windows\\Temp\\lsass.dmp
+```
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/3c652ce8-0184-41f6-89d6-662c8b7519a6)
+
+Now, we’re ready to rerun our LOLBIN attack to dump lsass from memory.
+
+>__Tip__: you can press the “Up” arrow to go back through historic commands you ran in Sliver to repeat the same command as before.
+
+After rerunning the command above, go to the “Detections” tab on the LimaCharlie main left-side menu. We should have detected a threat with the detection signature we just set up.
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/f5f1b248-5219-4d0b-8bc0-2b7816b5b363)
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/b7d2271e-f1ac-49fb-a4ff-93875b872504)
+
+Notice you can also go straight to the timeline where this event occurred by clicking “View Event Timeline” from the Detection entry.
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/ae04b6d0-3521-47ba-94b2-3132e8ce661c)
 
 
 
+---
 
 
+### Part 4 - Blocking Attacks
 
+So in Part 3 we learned that we can craft our own detection rules to identify the moment a threat unfolds on our Windows system, but wouldn’t it be great if we could block the threat rather than just generate an alert?
 
+>Note From Eric
+>Now let me first say, it’s critical that anytime you are writing a blocking rule that you properly baseline the environment for false positives else you could possibly cause some real problems in your environment. Baselining is another skillset any SOC analyst must master, and it can take time and diligence to do it right. Generally what this looks like is crafting an alert-only detection rule, letting it run for days or weeks, tuning it to eliminate all false positives, and then deploying the blocking version of that rule.
 
+We are going to create a rule that would be very effective at disrupting a ransomware attack by looking for a predictable action that ransomware tends to take: deletion of volume shadow copies.
 
+>__What are volume shadow copies?__
+>Volume Shadow Copies provide a convenient way to restore individual files or even an entire file system to a previous state which makes it a very attractive option for recovering from a ransomware attack. For this reason, it’s become very predictable that one of the first signs of an impending ransomware attack is the deletion of volume shadow copies.
+>link https://redcanary.com/blog/its-all-fun-and-games-until-ransomware-deletes-the-shadow-copies/
 
+A basic command that would accomplish this
 
+```
+vssadmin delete shadows /all
+```
 
+This  command is not one that will be run often (if ever) in healthy environments (but baselining is still crucial as some back ups software and other applications may do funny stuff like this on occasion).
+So we now have a prime candidate for a blocking rule: low false positive prevalence, high threat activity.
 
+Lets jump back onto Sliver and to start we need to get into a system native command prompt
 
+```
+shell
+```
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/a7cb83ea-6dbb-4ab1-bc9e-fc3765841902)
+
+In the new system shell, run the following command
+
+```
+vssadmin delete shadows /all
+```
+
+The output is not important as there may or may not be Volume Shadow Copies available on the VM to be deleted, but running the command is sufficient to generate the telemetry we need.
+
+Lets jump back over to LimaCharlie
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/95f26e50-7a8f-4d32-ad68-150090435ef6)
+
+Lets expand the detection and examine all of the metadata contained within the detection itself. One of the great things about Sigma rules is they are enriched with references to help you understand why the detection exists in the first place.
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/32948cf7-be34-4f93-b526-a5c793125182)
+
+>One of the reference URLs contains a YARA signature written by Florian Roth that contains several more possible command lines that we’d want to consider in a very robust detection rule.
+>https://github.com/Neo23x0/Raccine/blob/20a569fa21625086433dcce8bb2765d0ea08dcb6/yara/gen_ransomware_command_lines.yar
+
+View the offending event in the Timeline to see the raw event that generated this detection
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/0183ace1-2b18-492d-8783-a8583903d7d9)
+
+Lets set up a Detection & Response rule from this even
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/df219d50-680c-42cc-b9c0-2f2b6fa91b4c)
+
+Add the following Response rule to the Respond section
+
+```
+- action: report
+  name: vss_deletion_kill_it
+- action: task
+  command:
+    - deny_tree
+    - <<routing/parent>>
+```
+
+The “action: report” section simply fires off a Detection report to the “Detections” tab
+The “action: [task](https://doc.limacharlie.io/docs/documentation/b43d922abb409-reference-actions#task)” section is what is responsible for killing the parent process responsible with [deny_tree](https://doc.limacharlie.io/docs/documentation/819e855933d6c-reference-commands#deny_tree) for the `vssadmin delete shadows /all` command.
+
+Lets save this and call it 'vss_deletion_kill_it'
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/2f55038f-7300-40b2-9134-415495a47496)
+
+#### Lets block it
+
+Lets go back to our Sliver C2 session and run the Delete Volume Shadows command again
+
+```
+vssadmin delete shadows /all
+```
+
+Now to test if our D&R rule properly terminated the parent process of our implant, check to see if you still have an active system shell by rerunning the whoami command
+
+```
+whoami
+```
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/9a898720-1c07-44a9-9fad-b17309d97e7c)
+
+If our D&R rule worked successfully, the system shell will hang and fail to return anything from the whoami command, because the parent process was terminated.
+This is effective because in a real ransomware scenario, the parent process is likely the ransomware payload or lateral movement tool that would be terminated in this case.
+
+Lets check LimaCharlie 'Detections' and see if the rule fired
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/22adfe3b-ed51-45e5-8168-66cd1d157299)
 
 
 
