@@ -2,19 +2,18 @@
 
 ## Objective
 
-Developing my first dashboard & visualization on Elastic to show
-- Failed login attempts (All Users)
-- Failed login attempts (Disabled Users)
-- Failed login attempts (Administrators)
+To create a payload and detect it, create rule to alert and also detect this, Block the attack then automate it.
 
 ### Skills Learned
 
-- Creating new dashboards and visuals.
-- Editing of existing dashboards.
+- Setting up LimaCharlie
+- Creating Detection & Response Rules
+- Creating Yara Rules
+- Automation
 
 ### Tools Used
 
-- Security Information and Event Management (SIEM) Elastic.
+- LimaCharlie
 
 ## Step 1 - Install LimaCharlie
 
@@ -538,5 +537,281 @@ Lets check LimaCharlie 'Detections' and see if the rule fired
 
 
 
+---
+
+
+## Part 5 - Automated YARA Scanning
+
+The goal of this post is to take advantage of a more advanced capability of any good EDR sensor, to automatically scan files or processes for the presence of malware based on a YARA signature
+
+>__What is YARA?__
+>YARA is a tool primarily used for identifying and classifying malware based on textual or binary patterns. It allows researchers and security professionals to craft rules that describe unique characteristics of specific malware families or malicious behaviors. These rules can then be applied to files, processes, or even network traffic to detect potential threats. When analyzing a compromised system, YARA helps in sifting through large amounts of data to find malicious artifacts by matching them against a set of predefined rules. This ability to create customized detection signatures is particularly useful in threat hunting and incident response, enabling swift identification of known and even previously unknown malicious elements.
+>YARA originated from the efforts of Victor M. Alvarez, a malware researcher. It was initially developed as an internal tool at his former employer, Hispasec Sistemas, which is behind the well-known VirusTotal service. The tool was designed to assist researchers in identifying and classifying malware samples based on textual or binary patterns. Due to its effectiveness and utility, YARA was later released as an open-source tool, and it quickly gained popularity in the cybersecurity community. Over the years, it has become a standard tool for malware research, threat hunting, and incident response, thanks to its flexibility and the active community that has grown around it.
+>YARA originated from the efforts of Victor M. Alvarez, a malware researcher. It was initially developed as an internal tool at his former employer, Hispasec Sistemas, which is behind the well-known VirusTotal service. The tool was designed to assist researchers in identifying and classifying malware samples based on textual or binary patterns. Due to its effectiveness and utility, YARA was later released as an open-source tool, and it quickly gained popularity in the cybersecurity community. Over the years, it has become a standard tool for malware research, threat hunting, and incident response, thanks to its flexibility and the active community that has grown around it.
+>There are many free and open source YARA scanners and rulesets. Read more about YARA from [VirusTotal](https://virustotal.github.io/yara/) or explore one of the many open source [YARA rulesets](https://github.com/Yara-Rules/rules). A solid premium ruleset is the one maintained by [Nextron systems](https://www.nextron-systems.com/valhalla/).
+
+Lets prepare our LimaCharlie instance for detecting certain file system and process activities in order to trigger YARA scans.
+
+__Add a YARA signature for the Sliver C2 payload__
+Since we already know we’re dealing with the Sliver C2 payload, we can be more targeted in our exercise by using a signature specifically looking for Sliver. Lucky for us, the UK National Cyber Security Centre published some fantastic intel on Sliver, including YARA signatures and other useful detections. The only downside is they crammed it all into a PDF making it a little difficult to use without extracting it manually — which I’ve already done for you.
+
+Within LimaCharlie, browse to “Automation” > “YARA Rules” and lets add a Yara Rule
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/339cf092-b06d-4303-bf47-92fb0a3d5864)
+
+Were going to name the Rule 'Sliver' and paste in the below which you can get from: https://gist.githubusercontent.com/ecapuano/2c59ff1ea354f1aae905d6e12dc8e25b/raw/831d7b7b6c748f05123c6ac1a5144490985a7fe6/sliver.yara
+
+```
+rule sliver_github_file_paths_function_names {
+  meta:
+    author = "NCSC UK"
+    description = "Detects Sliver Windows and Linux implants based on paths and function names within the binary"
+  strings:
+    $p1 = "/sliver/"
+    $p2 = "sliverpb."
+    $fn1 = "RevToSelfReq"
+    $fn2 = "ScreenshotReq"
+    $fn3 = "IfconfigReq"
+    $fn4 = "SideloadReq"
+    $fn5 = "InvokeMigrateReq"
+    $fn6 = "KillSessionReq"
+    $fn7 = "ImpersonateReq"
+    $fn8 = "NamedPipesReq"
+  condition:
+    (uint32(0) == 0x464C457F or (uint16(0) == 0x5A4D and uint16(uint32(0x3c)) == 0x4550)) and (all of ($p*) or 3 of ($fn*))
+}
+
+rule sliver_proxy_isNotFound_retn_cmp_uniq {
+  meta:
+    author = "NCSC UK"
+    description = "Detects Sliver implant framework based on some unique CMPs within the Proxy isNotFound function. False positives may occur"
+  strings:
+    $ = {C644241800C381F9B3B5E9B2}
+    $ = {8B481081F90CAED682}
+  condition:
+    (uint32(0) == 0x464C457F or (uint16(0) == 0x5A4D and uint16(uint32(0x3c)) == 0x4550)) and all of them
+}
+
+rule sliver_nextCCServer_calcs {
+  meta:
+    author = "NCSC UK"
+    description = "Detects Sliver implant framework based on instructions from the nextCCServer function. False positives may occur"
+  strings:
+    $ = {4889D3489948F7F94839CA????48C1E204488B0413488B4C1308}
+  condition:
+    (uint32(0) == 0x464C457F or (uint16(0) == 0x5A4D and uint16(uint32(0x3c)) == 0x4550)) and all of them
+}
+```
+
+And click 'Save'
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/9e31c70d-60c7-4f49-85db-e317375c06da)
+
+Now, before we use these YARA rules, we want to setup a few generic D&R rules that will generate alerts whenever a YARA detection occurs.
+
+Go to “Automation” > “D&R Rules” and create a new rule with the below in te 'Detect' block
+
+```
+event: YARA_DETECTION
+op: and
+rules:
+  - not: true
+    op: exists
+    path: event/PROCESS/*
+  - op: exists
+    path: event/RULE_NAME
+```
+
+And the below in the 'Respond' block
+
+```
+- action: report
+  name: YARA Detection {{ .event.RULE_NAME }}
+- action: add tag
+  tag: yara_detection
+  ttl: 80000
+```
+
+And were going to save this rule as 'YARA Detection'
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/6ccc0de0-bc04-4639-a43a-74ac60b82a45)
+
+Lets create 1 last rule with the below in te 'Detect' block
+
+```
+event: YARA_DETECTION
+op: and
+rules:
+  - op: exists
+    path: event/RULE_NAME
+  - op: exists
+    path: event/PROCESS/*
+```
+
+And the below in the 'Respond' block
+
+```
+- action: report
+  name: YARA Detection in Memory {{ .event.RULE_NAME }}
+- action: add tag
+  tag: yara_detection_memory
+  ttl: 80000
+```
+
+And were going to save this rule as 'YARA Detection in Memory'
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/31ea44cd-33c8-430f-ab7b-47721698f66a)
+
+#### Lets test our new YARA signature
+
+Since we already know we have a Sliver implant sitting in the Downloads folder of our Windows VM, we can easily test our signature by initiating a manual YARA scan using the EDR sensor. This will give us a sanity check that all things are working up to this point.
+
+In LimaCharlie, browse to the “Sensors List” and click on our Windows VM sensor then click on the 'Cosole' menu item on the left.
+
+Run the following command to kick off a manual YARA scan of all files in the Downloads directory, looking for something that matches the Sliver YARA signature. Hit enter twice to execute this command
+
+```
+yara_scan hive://yara/sliver -r C:\Users\sywtbsa\Downloads
+```
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/a8090823-9b30-4412-a8a0-c5be45bf69a8)
+
+We can see below a positive hit on one of the signatures contained within the Sliver YARA rule
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/f4b4eb78-bdee-4d6c-9de8-f79f18ea6f7e)
+
+Let confirm we also have a detection on the 'Detections' screen
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/e38675d1-8fbe-46d6-9c07-6a4d445eb44c)
+
+Lets automate this process!
+
+#### Automate - YARA Scan downloaded EXEs
+
+Browse to “Automation” > “D&R Rules” and create a new rule with the below in te 'Detect' block
+
+Notice that this detection is simply looking for NEW .exe files to appear in any users Downloads directory.
+
+```
+event: NEW_DOCUMENT
+op: and
+rules:
+  - op: starts with
+    path: event/FILE_PATH
+    value: C:\Users\
+  - op: contains
+    path: event/FILE_PATH
+    value: \Downloads\
+  - op: ends with
+    path: event/FILE_PATH
+    value: .exe
+```
+
+And the below in the 'Respond' block
+
+This response action generates an alert for the EXE creation, but more importantly, kicks off a YARA scan using the Sliver signature against the newly created EXE.
+
+```
+- action: report
+  name: EXE dropped in Downloads directory
+- action: task
+  command: >-
+    yara_scan hive://yara/sliver -f "{{ .event.FILE_PATH
+    }}"
+  investigation: Yara Scan Exe
+  suppression:
+    is_global: false
+    keys:
+      - '{{ .event.FILE_PATH }}'
+      - Yara Scan Exe
+    max_count: 1
+    period: 1m
+```
+
+And were going to save this rule as 'YARA Scan Downloaded EXE'
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/0ab6b50e-1794-4351-93a6-eb6db5f79195)
+
+#### Automatically YARA scan processes launched from Downloads directory
+
+Browse to “Automation” > “D&R Rules” and create a new rule with the below in te 'Detect' block
+
+This rule is matching any process that is launched from a user Downloads directory
+
+```
+event: NEW_PROCESS
+op: and
+rules:
+  - op: starts with
+    path: event/FILE_PATH
+    value: C:\Users\
+  - op: contains
+    path: event/FILE_PATH
+    value: \Downloads\
+```
+
+And the below in the 'Respond' block
+
+Notice in this rule, we’re no longer scanning the FILE_PATH, but the actual running process by specifying its PROCESS_ID. We are also now using the other YARA rule we created, sliver-process
+
+```
+- action: report
+  name: Execution from Downloads directory
+- action: task
+  command: yara_scan hive://yara/sliver-process --pid "{{ .event.PROCESS_ID }}"
+  investigation: Yara Scan Process
+  suppression:
+    is_global: false
+    keys:
+      - '{{ .event.PROCESS_ID }}'
+      - Yara Scan Process
+    max_count: 1
+    period: 1m
+```
+
+And were going to save this rule as 'YARA Scan Process Launched from Downloads'
+
+####Let’s trigger our new rules!
+
+To make things easier, we won’t re-download our Sliver payload, but we’ll simulate this activity by moving it to another location, then putting it back into C:\Users\User\Downloads
+
+To start i will open up Powershell as Administrator from the desktop and run the commands
+1st to change to the Downloads directory
+2nd to move the payload to the Documents folder
+3rd to put the payload back into the downloads folder
+
+```
+cd ~\Downloads
+Move-Item .\ELECTRIC_INEVITABLE.exe ..\Documents\
+Move-Item ..\Documents\ELECTRIC_INEVITABLE.exe .\
+```
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/2a9b3184-bdb6-4d32-ab33-6d6cab2522bf)
+
+Lets go back over to LimaCharlie and check out the detections and We should see an initial alert for EXE dropped in Downloads directory followed shortly by a YARA detection once the scan kicked off and found Sliver inside the EXE
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/e3aff106-1cb1-45a0-8861-1fca961d2c1b)
+
+####Scanning processes launched from Downloads
+
+Let’s now test our new D&R rule which scans all processes launched from the Downloads directory for the presence of Sliver C2.
+
+We need to open up and administrative Powershell prompt
+
+First, let’s kill any existing instances of our Sliver C2 from previous labs
+
+```
+Get-Process ELECTRIC_INEVITABLE | Stop-Process
+```
+
+Now from the Administrative PowerShell session, execute the Sliver payload to create the NEW_PROCESS event we need to trigger the scanning of a process launched from the Downloads directory
+
+```
+C:\Users\sywtbsa\Downloads\ELECTRIC_INEVITABLE.exe
+```
+
+Lets go back to LimaCharlie and check out the detections again and we can see an initial alert for Execution from Downloads directory
+
+![image](https://github.com/Matt4llan/SYWTBASA-Lab/assets/156334555/e562f22c-afde-48e4-9a07-e342d26ea3af)
 
 
