@@ -14,6 +14,7 @@ To create a payload and detect it, create rule to alert and also detect this, Bl
 ### Tools Used
 
 - LimaCharlie
+- Sliver
 
 ## Step 1 - Install LimaCharlie
 
