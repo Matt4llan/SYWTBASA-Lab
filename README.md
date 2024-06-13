@@ -2,7 +2,7 @@
 
 ## Objective
 
-The purpose of the SOC analyst lab is to provide hands-on experience in setting up, configuring, and using security operations center (SOC) tools such as LimaCharlie EDR and Sliver C2 to monitor, detect, and respond to security threats. The lab aims to equip participants with practical skills in deploying endpoint detection and response (EDR) solutions, generating command and control (C2) implants, and analyzing security telemetry to enhance their threat detection and incident response capabilities.
+The purpose of the SOC analyst lab is to provide hands-on experience in setting up, configuring, and using security operations center (SOC) tools such as LimaCharlie EDR and Sliver C2 to monitor, detect, and respond to security threats. The lab aims to equip me with practical skills in deploying endpoint detection and response (EDR) solutions, generating command and control (C2) implants, and analyzing security telemetry to enhance their threat detection and incident response capabilities.
 
 ### Skills Learned
 
