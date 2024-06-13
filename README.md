@@ -25,8 +25,7 @@ The purpose of the SOC analyst lab is to provide hands-on experience in setting 
   - __Windows Virtual Machine:__ As the target environment for EDR and C2 deployment
   - __Command Prompt (Windows):__ For executing installation and interaction commands
   - __VirusTotal:__ For inspecting and analyzing suspicious executables
-  - __EchoTrail:__ For familiarizing with common processes and identifying anomalies
-  - __LOLBINs (Living Off the Land Binaries):__ For understanding legitimate binaries used for malicious purposes
+
 
 ## Step 1 - Install LimaCharlie
 
